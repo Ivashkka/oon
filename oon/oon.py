@@ -83,9 +83,11 @@ class _NetClient:
         _NetClient._count -= 1
 
 
+
 class _NetManager(object):
     init        =   False
     server_mode =   False
+    connected   =   False
     encoding    =   None
     timeout     =   None
     queue_size  =   None
@@ -150,14 +152,25 @@ class _NetManager(object):
     @staticmethod
     def _connect_to_srv():
         if not _NetManager.init or _NetManager.server_mode == True: return ExCode.StartFail
+        if _NetManager.connected == True: return ExCode.BadConn
         try:
             _NetManager.net_socket.connect((_NetManager.ip, _NetManager.port))
+            _NetManager.connected = True
             return ExCode.Success
         except socket.timeout:
             return ExCode.Timeout
         except:
             return ExCode.BadConn
 
+    @staticmethod
+    def _disconnect_from_srv():
+        if not _NetManager.init or _NetManager.server_mode == True: return ExCode.StartFail
+        if _NetManager.connected == False: return ExCode.BadConn
+        try: _NetManager.net_socket.close()
+        except: return ExCode.BadConn
+        _NetManager.connected = False
+        return ExCode.Success
+    
 #### shared methods
 
     @staticmethod
@@ -167,6 +180,7 @@ class _NetManager(object):
         elif _NetManager.server_mode == False and client != None: return None, ExCode.BadConn
         if _NetManager.server_mode == True and type(client) != _NetClient: return None, ExCode.BadConn
         if _NetManager.server_mode == True and client.alive != True: return None, ExCode.BadConn
+        if _NetManager.server_mode == False and _NetManager.connected == False: return None, ExCode.BadConn
         try:
             if client != None: data = client.socket.recv(bytes)
             else: data = _NetManager.net_socket.recv(bytes)
@@ -184,6 +198,7 @@ class _NetManager(object):
         elif _NetManager.server_mode == False and client != None: return ExCode.BadConn
         if _NetManager.server_mode == True and type(client) != _NetClient: return ExCode.BadConn
         if _NetManager.server_mode == True and client.alive != True: return ExCode.BadConn
+        if _NetManager.server_mode == False and _NetManager.connected == False: return None, ExCode.BadConn
         try:
             if client != None: client.socket.send(data.encode(encoding=_NetManager.encoding))
             else: _NetManager.net_socket.send(data.encode(encoding=_NetManager.encoding))
@@ -200,6 +215,7 @@ class _NetManager(object):
         if prepare_mod == True: return ExCode.Success
         try:
             _NetManager.net_socket.close()
+            _NetManager.connected = False
             _NetManager.server_mode = False
             _NetManager.ip = None
             _NetManager.port = None
@@ -214,6 +230,10 @@ class _NetManager(object):
     @staticmethod
     def _status():
         return _NetManager.init
+
+    @staticmethod
+    def _connect_status():
+        return _NetManager.connected
 
 
 
@@ -343,8 +363,11 @@ def generate_net_message(netobj = DefaultNetobj, fields_to_ignore : list = Defau
 def load_net_message_from_str(messtr : str = DefaultMessageString, fields_to_ignore : list = DefaultIgnoreFields):
     return _ConvertManager._load_net_message_from_str(messtr, fields_to_ignore)
 
-def get_start_status():
+def is_running():
     return _NetManager._status() and _ConvertManager._status()
+
+def is_connected():
+    return _NetManager._connect_status()
 
 def turn_on(modules : list = DefaultModules, is_server : bool = DefaultIsServer, ip : str = DefaultIp, port : int = DefaultPort, encoding : str = DefaultEncoding, timeout : int = DefaultTimeout, queue_size : int = DefaultQueueSize):
     convcode = _ConvertManager._start_converter(modules)
@@ -369,6 +392,9 @@ def close_client_connection(client : _NetClient = DefaultNetClient):
 
 def connect_to_srv():
     return _NetManager._connect_to_srv()
+
+def disconnect_from_srv():
+    return _NetManager._disconnect_from_srv()
 
 def receive_data(bytes : int = DefaultBytes, client : _NetClient = DefaultNetClient):
     data, excode = _NetManager._receive_data(client, bytes)

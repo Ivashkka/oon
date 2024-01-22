@@ -201,8 +201,15 @@
       <td><b>connect_to_srv()</b></td>
       <td>no</td>
       <td>connect to server</td>
-      <td>if started in client mode</td>
-      <td><b>ExCode.Success</b> - if all ok<br><b>ExCode.BadConn</b> - if something wrong with connection<br><b>ExCode.Timeout</b> - if timeouted<br><b>ExCode.StartFail</b> - if you forgot to start oon</td>
+      <td>if started in client mode and not connected</td>
+      <td><b>ExCode.Success</b> - if all ok<br><b>ExCode.BadConn</b> - if something wrong with connection, or already connected<br><b>ExCode.Timeout</b> - if timeouted<br><b>ExCode.StartFail</b> - if you forgot to start oon</td>
+    </tr>
+    <tr>
+      <td><b>disconnect_from_srv()</b></td>
+      <td>no</td>
+      <td>disconnect from server</td>
+      <td>if started in client mode and connected</td>
+      <td><b>ExCode.Success</b> - if all ok<br><b>ExCode.BadConn</b> - if something wrong with connection, or already disconnected<br><b>ExCode.Timeout</b> - if timeouted<br><b>ExCode.StartFail</b> - if you forgot to start oon</td>
     </tr>
     <tr>
       <td><b>generate_net_message()</b></td>
@@ -222,15 +229,29 @@
       <td><b>receive_data()</b></td>
       <td>bytes : int - size of message to expect,<br>client : _NetClient - client. Only if started in server mode!</td>
       <td>receive data from client or server</td>
-      <td>if started</td>
+      <td>if started. If in client mode, needs to be connected to server</td>
       <td><b>(_NetMessage, ExCode.Success)</b> - if all ok<br><b>(_NetMessage, ExCode.BadData)</b> - if failed to <b>load_net_message_from_str()</b><br><b>(None, ExCode.BadConn)</b> - if something wrong with connection<br><b>(None, ExCode.Timeout)</b> - if timeouted<br><b>(None, ExCode.StartFail)</b> - if you forgot to start oon</td>
     </tr>
     <tr>
       <td><b>send_data()</b></td>
       <td>netmessage : _NetMessage - generated network message,<br>client : _NetClient - client. Only if started in server mode!</td>
       <td>send data to client or server</td>
-      <td>if started</td>
+      <td>if started. If in client mode, needs to be connected to server</td>
       <td><b>ExCode.Success</b> - if all ok<br><b>ExCode.BadData</b> - if you give strange data<br><b>ExCode.BadConn</b> - if something wrong with client<br><b>ExCode.Timeout</b> - if timeouted<br><b>ExCode.StartFail</b> - if you forgot to start oon</td>
+    </tr>
+    <tr>
+      <td><b>is_running()</b></td>
+      <td>no</td>
+      <td>get info about oon status</td>
+      <td>no</td>
+      <td><b>True</b> - running<br><b>False</b> - not running</td>
+    </tr>
+    <tr>
+      <td><b>is_connected()</b></td>
+      <td>no</td>
+      <td>get info about connect status (Does not tell info about other side connection state!)</td>
+      <td>if started in client mode</td>
+      <td><b>True</b> - connected<br><b>False</b> - not connected</td>
     </tr>
   </tbody>
 </table>
