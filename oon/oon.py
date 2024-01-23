@@ -21,6 +21,7 @@ DefaultBytes            =   1024
 DefaultNetClient        =   None
 
 DefaultModules          =   []
+DefaultClasses          =   []
 DefaultNetobj           =   None
 DefaultMessageString    =   None
 DefaultIgnoreFields     =   []
@@ -28,31 +29,38 @@ DefaultIgnoreFields     =   []
 
 class _ConvertManager(object):
     init    =   False
-    modules =   None
+    classes =   []
 
     @staticmethod
-    def _start_converter(modules : list):
+    def _start_converter(modules : list, classes : list):
         if _ConvertManager.init != False: return ExCode.StartFail
-        _ConvertManager.modules = modules
+        netobj_list = []
+        for mod in modules:
+            for objcls in dir(mod):
+                if isinstance(getattr(mod, objcls), type):
+                    netobj_list.append(getattr(mod, objcls))
+        for objcls in classes:
+            netobj_list.append(objcls)
+        _ConvertManager.classes = netobj_list
         _ConvertManager.init = True
         return ExCode.Success
 
     @staticmethod
     def _generate_net_message(netobj, fields_to_ignore : list, uuid : str):
         if not _ConvertManager.init: return None, ExCode.StartFail
-        new_network_message = _NetMessage(_ConvertManager.modules, netobj, fields_to_ignore, uuid)
+        new_network_message = _NetMessage(_ConvertManager.classes, netobj, fields_to_ignore, uuid)
         return new_network_message, new_network_message.create_code
 
     @staticmethod
     def _load_net_message_from_str(messtr : str, fields_to_ignore : list):
         if not _ConvertManager.init: return None, ExCode.StartFail
-        old_network_message = _NetMessage(_ConvertManager.modules, messtr, fields_to_ignore)
+        old_network_message = _NetMessage(_ConvertManager.classes, messtr, fields_to_ignore)
         return old_network_message, old_network_message.create_code
 
     @staticmethod
     def _stop(prepare_mod : bool):
         if prepare_mod == True: return ExCode.Success
-        _ConvertManager.modules = None
+        _ConvertManager.classes = []
         _ConvertManager.init = False
         return ExCode.Success
 
@@ -241,12 +249,7 @@ class _NetManager(object):
 
 class _NetMessage:
     __slots__ = ['create_code', 'json_string', 'netobj', 'uuid']
-    def __init__(self, modules : list, body, fields_to_ignore : list, uuid : str = ud.uuid4().hex[:10]):
-        netobj_list = []
-        for mod in modules:
-            for objcls in dir(mod):
-                if isinstance(getattr(mod, objcls), type):
-                    netobj_list.append(getattr(mod, objcls))
+    def __init__(self, classes : list, body, fields_to_ignore : list, uuid : str = ud.uuid4().hex[:10]):
         final_netobj = None
         final_json_string = json.dumps({"head":{"uuid":uuid}, "body":{}})
         final_uuid = uuid
@@ -258,10 +261,10 @@ class _NetMessage:
             else:
                 mesdict = json.loads(final_json_string)
                 final_uuid = mesdict["head"]["uuid"]
-                final_netobj, final_create_code =  _NetMessage._netobj_from_dict(modules, mesdict["body"], fields_to_ignore)
-        elif type(body) in netobj_list or body == None:
+                final_netobj, final_create_code =  _NetMessage._netobj_from_dict(classes, mesdict["body"], fields_to_ignore)
+        elif type(body) in classes or body == None:
             final_netobj = body
-            objdict, final_create_code = _NetMessage._netobj_to_dict(netobj_list, body, fields_to_ignore)
+            objdict, final_create_code = _NetMessage._netobj_to_dict(classes, body, fields_to_ignore)
             mesdict = {"head":{"uuid":uuid}, "body":objdict}
             if _NetMessage._check_net_mes_dict(mesdict) != ExCode.Success:
                 final_create_code = ExCode.BadData
@@ -295,9 +298,9 @@ class _NetMessage:
         return ExCode.Success
 
     @staticmethod
-    def _netobj_to_dict(netobj_list, netobj, fields_to_ignore : list):
+    def _netobj_to_dict(classes, netobj, fields_to_ignore : list):
         if netobj == None: return {}, ExCode.BadData
-        if type(netobj) not in netobj_list: return {}, ExCode.BadData
+        if type(netobj) not in classes: return {}, ExCode.BadData
         try: class_attrs = [attr for attr in dir(netobj) if not callable(getattr(netobj, attr)) and not attr.startswith("__")]
         except: return {}, ExCode.BadData
         objdict = {"type":type(netobj).__name__}
@@ -308,10 +311,10 @@ class _NetMessage:
             except: return objdict, ExCode.BadData
             if type(field_value) in bad_field_types: return objdict, ExCode.BadData
             elif isinstance(field_value, enum.Enum):
-                if type(field_value) not in netobj_list: return objdict, ExCode.BadData
+                if type(field_value) not in classes: return objdict, ExCode.BadData
                 objdict[field] = {"type":type(field_value).__name__, "value":field_value.value}
-            elif type(field_value) in netobj_list:
-                recobjdict, recexcode = _NetMessage._netobj_to_dict(netobj_list, field_value, fields_to_ignore)
+            elif type(field_value) in classes:
+                recobjdict, recexcode = _NetMessage._netobj_to_dict(classes, field_value, fields_to_ignore)
                 objdict[field] = recobjdict
                 if recexcode != ExCode.Success: return objdict, recexcode
             else:
@@ -319,18 +322,18 @@ class _NetMessage:
         return objdict, ExCode.Success
 
     @staticmethod
-    def _netobj_from_dict(modules, objdict, fields_to_ignore : list):
+    def _netobj_from_dict(classes, objdict, fields_to_ignore : list):
         if objdict == {} or type(objdict) != dict or "type" not in objdict: return None, ExCode.BadData
-        netobjmod = None
-        for mod in modules:
-            if hasattr(mod, objdict["type"]):
-                netobjmod = mod
+        netobjclass = None
+        for objcls in classes:
+            if objcls.__name__ == objdict["type"]:
+                netobjclass = objcls
                 break
-        if netobjmod == None: return None, ExCode.BadData
+        if netobjclass == None: return None, ExCode.BadData
         try:
-            if type(getattr(netobjmod, objdict["type"])) == type(enum.Enum):
-                return getattr(netobjmod, objdict["type"])(objdict["value"]),  ExCode.Success
-            newnetobj = getattr(netobjmod, objdict["type"])()
+            if type(netobjclass) == type(enum.Enum):
+                return netobjclass(objdict["value"]),  ExCode.Success
+            newnetobj = netobjclass()
             class_attrs = [attr for attr in dir(newnetobj) if not callable(getattr(newnetobj, attr)) and not attr.startswith("__")]
         except: return None, ExCode.BadData
         type_field_ignored = False
@@ -344,7 +347,7 @@ class _NetMessage:
                 return newnetobj, ExCode.BadData
             elif type(objdict[field]) == dict:
                 try:
-                    subobj, excode = _NetMessage._netobj_from_dict(modules, objdict[field], fields_to_ignore)
+                    subobj, excode = _NetMessage._netobj_from_dict(classes, objdict[field], fields_to_ignore)
                     setattr(newnetobj, field, subobj)
                     if excode != ExCode.Success: return newnetobj, excode
                 except: return newnetobj, ExCode.BadData
@@ -369,8 +372,8 @@ def is_running():
 def is_connected():
     return _NetManager._connect_status()
 
-def turn_on(modules : list = DefaultModules, is_server : bool = DefaultIsServer, ip : str = DefaultIp, port : int = DefaultPort, encoding : str = DefaultEncoding, timeout : int = DefaultTimeout, queue_size : int = DefaultQueueSize):
-    convcode = _ConvertManager._start_converter(modules)
+def turn_on(modules : list = DefaultModules, classes : list = DefaultClasses, is_server : bool = DefaultIsServer, ip : str = DefaultIp, port : int = DefaultPort, encoding : str = DefaultEncoding, timeout : int = DefaultTimeout, queue_size : int = DefaultQueueSize):
+    convcode = _ConvertManager._start_converter(modules, classes)
     netcode = _NetManager._init_connection(is_server, ip, port, encoding, timeout, queue_size)
     if netcode != ExCode.Success or convcode != ExCode.Success:
         return ExCode.StartFail

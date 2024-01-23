@@ -171,7 +171,7 @@
   <tbody>
     <tr>
       <td><b>turn_on()</b></td>
-      <td><b>modules : list</b> - list of modules with your custom classes,<br><b>is_server : bool</b> - start as server or as client,<br><b>ip : str</b> - ip,<br><b>port : int</b> - port,<br><b>encoding : str</b> - what encoding to use,<br><b>timeout : int</b> - timeout of future operations,<br><b>queue_size : int</b> - size of connections in queue</td>
+      <td><b>modules : list</b> - list of modules with your custom classes,<br><b>classes : list</b> - list of your custom unit classes which aren't located in your modules,<br><b>is_server : bool</b> - start as server or as client,<br><b>ip : str</b> - ip,<br><b>port : int</b> - port,<br><b>encoding : str</b> - what encoding to use,<br><b>timeout : int</b> - timeout of future operations,<br><b>queue_size : int</b> - size of connections in queue</td>
       <td>start oon</td>
       <td>if not started</td>
       <td><b>ExCode.Success</b> or <b>ExCode.StartFail</b></td>

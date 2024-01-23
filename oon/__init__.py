@@ -17,6 +17,7 @@ from .oon import DefaultIgnoreFields
 from .oon import DefaultIp
 from .oon import DefaultIsServer
 from .oon import DefaultMessageString
+from .oon import DefaultClasses
 from .oon import DefaultModules
 from .oon import DefaultNetClient
 from .oon import DefaultNetobj

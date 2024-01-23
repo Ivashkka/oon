@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
-VERSION = '0.0.4'
+VERSION = '0.0.5'
 DESCRIPTION = 'Package for simplify classes and objects transfer over network'
 
 with open('README.md', 'r') as f:
