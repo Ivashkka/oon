@@ -171,8 +171,8 @@ class _UnixManager(object):
     @staticmethod
     def _init_connection(is_server : bool, path : str, encoding : str, timeout : int, queue_size : int):
         if _UnixManager.init != False: return ExCode.StartFail
-        if _UnixManager._close_unix_socket() != ExCode.Success: return ExCode.StartFail
         if is_server == True:
+            if _UnixManager._close_unix_socket(path) != ExCode.Success: return ExCode.StartFail
             try:
                 _UnixManager.unix_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
                 _UnixManager.unix_socket.bind(path)
@@ -281,12 +281,12 @@ class _UnixManager(object):
         except:
             return ExCode.BadConn
 
-    def _close_unix_socket():
+    def _close_unix_socket(sock_path : str):
         try:
-            os.unlink(_UnixManager.path)
+            os.unlink(sock_path)
             return ExCode.Success
         except Exception as e:
-            if os.path.exists(_UnixManager.path):
+            if os.path.exists(sock_path):
                 return ExCode.StopFail
             return ExCode.Success
 
@@ -297,7 +297,7 @@ class _UnixManager(object):
         if prepare_mod == True: return ExCode.Success
         try:
             _UnixManager.unix_socket.close()
-            _UnixManager._close_unix_socket()
+            if _UnixManager.server_mode == True: _UnixManager._close_unix_socket(_UnixManager.path)
             _UnixManager.connected = False
             _UnixManager.server_mode = False
             _UnixManager.path = None
@@ -336,6 +336,7 @@ class _NetManager(object):
         if is_server == True:
             try:
                 _NetManager.net_socket = socket.socket()
+                _NetManager.net_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 _NetManager.net_socket.bind((ip, port))
                 _NetManager.net_socket.listen(queue_size)
                 _NetManager.net_socket.settimeout(timeout)
@@ -650,10 +651,12 @@ def disconnect_from_unix_srv():
     return _UnixManager._disconnect_from_srv()
 
 def receive_data_over_net(bytes : int = StartValues.DefaultNetBytes, client : _NetClient = StartValues.DefaultNetClient):
+    final_code = ExCode.Success
     data, excode = _NetManager._receive_data(client, bytes)
-    if excode != ExCode.Success: return data, excode
+    if excode != ExCode.Success: final_code = excode
     netmes, loadcode = load_message_from_str(messtr=data)
-    return netmes, loadcode
+    if loadcode != ExCode.Success and final_code == ExCode.Success: final_code = loadcode
+    return netmes, final_code
 
 def send_data_over_net(netmessage : _NetMessage, client : _NetClient = StartValues.DefaultNetClient):
     if type(netmessage) != _NetMessage : return ExCode.BadData
@@ -662,10 +665,12 @@ def send_data_over_net(netmessage : _NetMessage, client : _NetClient = StartValu
     return sendcode
 
 def receive_data_over_unix(bytes : int = StartValues.DefaultUnixBytes, client : _UnixClient = StartValues.DefaultUnixClient):
+    final_code = ExCode.Success
     data, excode = _UnixManager._receive_data(client, bytes)
-    if excode != ExCode.Success: return data, excode
+    if excode != ExCode.Success: final_code = excode
     netmes, loadcode = load_message_from_str(messtr=data)
-    return netmes, loadcode
+    if loadcode != ExCode.Success and final_code == ExCode.Success: final_code = loadcode
+    return netmes, final_code
 
 def send_data_over_unix(netmessage : _NetMessage, client : _UnixClient = StartValues.DefaultUnixClient):
     if type(netmessage) != _NetMessage : return ExCode.BadData

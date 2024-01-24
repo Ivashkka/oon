@@ -7,7 +7,7 @@
 <p><code>pip3 install oon</code></p>
 <br>
 <p><b>usage:</b></p>
-<p>OON is able to automaticly convert objects of your custom classes to dicts and strings and to form network message for transfering it</p>
+<p>OON is able to automatically convert objects of your custom classes to dicts and strings and form network message for transferring it</p>
 <p>It can act like a server or a client depends on what you need</p>
 <p>For example let's assume your python programs with some data related to cars and you have sepparate file cars.py with classes for different cars:</p>
 <pre>
