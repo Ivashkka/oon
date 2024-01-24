@@ -2,6 +2,7 @@ import uuid as ud
 import socket
 import enum
 import json
+import os
 
 class ExCode(enum.Enum):
     Success     =   0
@@ -11,20 +12,67 @@ class ExCode(enum.Enum):
     BadConn     =   4
     Timeout     =   5
 
-DefaultIp               =   '127.0.0.1'
-DefaultPort             =   9090
-DefaultIsServer         =   True
-DefaultEncoding         =   "utf-8"
-DefaultTimeout          =   None
-DefaultQueueSize        =   3
-DefaultBytes            =   1024
-DefaultNetClient        =   None
+class StartValues(object):
+    EnableUnixManager   =   False
+    UnixPath            =   'oon.socket'
+    UnixIsServer        =   True
+    UnixEncoding        =   "utf-8"
+    DefaultUnixTimeout  =   None
+    UnixQueueSize       =   3
+    DefaultUnixBytes    =   1024
+    DefaultUnixClient   =   None
 
-DefaultModules          =   []
-DefaultClasses          =   []
-DefaultNetobj           =   None
-DefaultMessageString    =   None
-DefaultIgnoreFields     =   []
+    EnableNetManager    =   False
+    NetIp               =   '127.0.0.1'
+    NetPort             =   9090
+    NetIsServer         =   True
+    NetEncoding         =   "utf-8"
+    DefaultNetTimeout   =   None
+    NetQueueSize        =   1
+    DefaultNetBytes     =   1024
+    DefaultNetClient    =   None
+
+    EnableConvertManager    =   True
+    ConvertModules                 =   []
+    ConvertClasses                 =   []
+    DefaultNetobj           =   None
+    DefaultMessageString    =   None
+    DefaultIgnoreFields     =   []
+
+    @staticmethod
+    def all_fields_info():
+        return f"""
+Unix named sockets connection settings:
+EnableUnixManager : bool = {StartValues.EnableUnixManager} - do you want to transfer data over unix named sockets?
+UnixPath : str = {StartValues.UnixPath} - path to unix socket file
+UnixIsServer : bool = {StartValues.UnixIsServer} - start in server mode or in client mode
+UnixEncoding : str = {StartValues.UnixEncoding} - encoding for messages
+DefaultUnixTimeout : int = {StartValues.DefaultUnixTimeout} - timeout for operations with transfering
+data (if started in server mode, client sonnections inherit this option)
+UnixQueueSize : int = {StartValues.UnixQueueSize} - connections queue
+DefaultUnixBytes : int = {StartValues.DefaultUnixBytes} - size of message to expect on receive_data()
+DefaultUnixClient : _UnixClient = {StartValues.DefaultUnixClient} - default value where _UnixClient needed
+
+Network connection settings:
+EnableNetManager : bool = {StartValues.EnableNetManager} - do you want to transfer data over unix named sockets?
+NetIp : str = {StartValues.NetIp} - server ip
+NetPort : int = {StartValues.NetPort} - server port
+NetIsServer : bool = {StartValues.NetIsServer} - start in server mode or in client mode
+NetEncoding : str = {StartValues.NetEncoding} - encoding for messages
+DefaultNetTimeout : int = {StartValues.DefaultNetTimeout} - timeout for operations with transfering
+data (if started in server mode, client sonnections inherit this option)
+NetQueueSize : int = {StartValues.NetQueueSize} - connections queue
+DefaultNetBytes : int = {StartValues.DefaultNetBytes} - size of message to expect on receive_data()
+DefaultNetClient : _NetClient = {StartValues.DefaultNetClient} - default value where _NetClient needed
+
+Converter settings:
+EnableConvertManager : bool = {StartValues.EnableConvertManager} - do not turn this off!
+ConvertModules : list = {StartValues.ConvertModules} - list of your custom modules
+ConvertClasses : list = {StartValues.ConvertClasses} - list of your custom classes
+DefaultNetobj : _NetMessage = {StartValues.DefaultNetobj} - default value where _NetMessage needed
+DefaultMessageString : str {StartValues.DefaultMessageString} - default value where _NetMessage needs json_string
+DefaultIgnoreFields : list = {StartValues.DefaultIgnoreFields} - default list of fields to ignore
+"""
 
 
 class _ConvertManager(object):
@@ -89,6 +137,185 @@ class _NetClient:
         try: self.socket.close()
         except: pass
         _NetClient._count -= 1
+
+class _UnixClient:
+    __slots__ = ['alive', 'socket', 'uuid']
+    _count = 0
+    def __init__(self, socket, uuid : str = ud.uuid4().hex[:10]):
+        self.socket = socket
+        self.uuid = uuid
+        self.alive = True
+        _UnixClient._count += 1
+    def set_time_out(self, timeout : int):
+        try:
+            self.socket.settimeout(timeout)
+            return ExCode.Success
+        except: return ExCode.BadConn
+    def __del__(self):
+        if self.alive != True: return
+        try: self.socket.close()
+        except: pass
+        _UnixClient._count -= 1
+
+
+class _UnixManager(object):
+    init        =   False
+    server_mode =   False
+    connected   =   False
+    encoding    =   None
+    timeout     =   None
+    queue_size  =   None
+    path        =   None
+    unix_socket =   None
+    
+    @staticmethod
+    def _init_connection(is_server : bool, path : str, encoding : str, timeout : int, queue_size : int):
+        if _UnixManager.init != False: return ExCode.StartFail
+        if _UnixManager._close_unix_socket() != ExCode.Success: return ExCode.StartFail
+        if is_server == True:
+            try:
+                _UnixManager.unix_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                _UnixManager.unix_socket.bind(path)
+                _UnixManager.unix_socket.listen(queue_size)
+                _UnixManager.unix_socket.settimeout(timeout)
+            except:
+                return ExCode.StartFail
+        else:
+            try:
+                _UnixManager.unix_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                _UnixManager.unix_socket.settimeout(timeout)
+            except:
+                return ExCode.StartFail
+        _UnixManager.server_mode = is_server
+        _UnixManager.path = path
+        _UnixManager.encoding = encoding
+        _UnixManager.timeout = timeout
+        _UnixManager.queue_size = queue_size
+        _UnixManager.init = True
+        return ExCode.Success
+
+#### server methods
+
+    @staticmethod
+    def _accept_connection(client_timeout : int):
+        if not _UnixManager.init or _UnixManager.server_mode == False: return None, ExCode.StartFail
+        try:
+            client_conn, client_addr = _UnixManager.unix_socket.accept()
+            new_client = _UnixClient(client_conn)
+            new_client.set_time_out(client_timeout)
+            return new_client, ExCode.Success
+        except socket.timeout:
+            return None, ExCode.Timeout
+        except:
+            return None, ExCode.BadConn
+
+    @staticmethod
+    def _close_client_connection(client : _UnixClient):
+        if not _UnixManager.init or _UnixManager.server_mode == False: return ExCode.StartFail
+        if type(client) != _UnixClient: return ExCode.BadConn
+        if client.alive != True: return ExCode.BadConn
+        try: client.socket.close()
+        except: return ExCode.BadConn
+        client.alive = False
+        _UnixClient._count -= 1
+        return ExCode.Success
+
+#### client methods
+
+    @staticmethod
+    def _connect_to_srv():
+        if not _UnixManager.init or _UnixManager.server_mode == True: return ExCode.StartFail
+        if _UnixManager.connected == True: return ExCode.BadConn
+        try:
+            _UnixManager.unix_socket.connect(_UnixManager.path)
+            _UnixManager.connected = True
+            return ExCode.Success
+        except socket.timeout:
+            return ExCode.Timeout
+        except:
+            return ExCode.BadConn
+
+    @staticmethod
+    def _disconnect_from_srv():
+        if not _UnixManager.init or _UnixManager.server_mode == True: return ExCode.StartFail
+        if _UnixManager.connected == False: return ExCode.BadConn
+        try: _UnixManager.unix_socket.close()
+        except: return ExCode.BadConn
+        _UnixManager.connected = False
+        return ExCode.Success
+
+#### shared methods
+
+    @staticmethod
+    def _receive_data(client : _UnixClient, bytes : int):
+        if not _UnixManager.init: return None, ExCode.StartFail
+        if _UnixManager.server_mode == True and client == None: return None, ExCode.BadConn
+        elif _UnixManager.server_mode == False and client != None: return None, ExCode.BadConn
+        if _UnixManager.server_mode == True and type(client) != _UnixClient: return None, ExCode.BadConn
+        if _UnixManager.server_mode == True and client.alive != True: return None, ExCode.BadConn
+        if _UnixManager.server_mode == False and _UnixManager.connected == False: return None, ExCode.BadConn
+        try:
+            if client != None: data = client.socket.recv(bytes)
+            else: data = _UnixManager.unix_socket.recv(bytes)
+            if not data: return None, ExCode.BadConn
+            return data.decode(), ExCode.Success
+        except socket.timeout:
+            return None, ExCode.Timeout
+        except:
+            return None, ExCode.BadConn
+
+    @staticmethod
+    def _send_data(client : _UnixClient, data : str = "None"):
+        if not _UnixManager.init: return ExCode.StartFail
+        if _UnixManager.server_mode == True and client == None: return ExCode.BadConn
+        elif _UnixManager.server_mode == False and client != None: return ExCode.BadConn
+        if _UnixManager.server_mode == True and type(client) != _UnixClient: return ExCode.BadConn
+        if _UnixManager.server_mode == True and client.alive != True: return ExCode.BadConn
+        if _UnixManager.server_mode == False and _UnixManager.connected == False: return None, ExCode.BadConn
+        try:
+            if client != None: client.socket.send(data.encode(encoding=_UnixManager.encoding))
+            else: _UnixManager.unix_socket.send(data.encode(encoding=_UnixManager.encoding))
+            return ExCode.Success
+        except socket.timeout:
+            return ExCode.Timeout
+        except:
+            return ExCode.BadConn
+
+    def _close_unix_socket():
+        try:
+            os.unlink(_UnixManager.path)
+            return ExCode.Success
+        except Exception as e:
+            if os.path.exists(_UnixManager.path):
+                return ExCode.StopFail
+            return ExCode.Success
+
+    @staticmethod
+    def _stop(prepare_mod : bool):
+        if not _UnixManager.init: ExCode.StopFail
+        if _UnixManager.server_mode == True and _UnixClient._count > 0: return ExCode.StopFail
+        if prepare_mod == True: return ExCode.Success
+        try:
+            _UnixManager.unix_socket.close()
+            _UnixManager._close_unix_socket()
+            _UnixManager.connected = False
+            _UnixManager.server_mode = False
+            _UnixManager.path = None
+            _UnixManager.encoding = None
+            _UnixManager.timeout = None
+            _UnixManager.queue_size = None
+            _UnixManager.init = False
+            return ExCode.Success
+        except:
+            return ExCode.StopFail
+
+    @staticmethod
+    def _status():
+        return _UnixManager.init
+
+    @staticmethod
+    def _connect_status():
+        return _UnixManager.connected
 
 
 
@@ -359,54 +586,89 @@ class _NetMessage:
 
 
 
-
-def generate_net_message(netobj = DefaultNetobj, fields_to_ignore : list = DefaultIgnoreFields, uuid : str = ud.uuid4().hex[:10]):
+def generate_message(netobj = StartValues.DefaultNetobj, fields_to_ignore : list = StartValues.DefaultIgnoreFields, uuid : str = ud.uuid4().hex[:10]):
     return _ConvertManager._generate_net_message(netobj, fields_to_ignore, uuid)
 
-def load_net_message_from_str(messtr : str = DefaultMessageString, fields_to_ignore : list = DefaultIgnoreFields):
+def load_message_from_str(messtr : str = StartValues.DefaultMessageString, fields_to_ignore : list = StartValues.DefaultIgnoreFields):
     return _ConvertManager._load_net_message_from_str(messtr, fields_to_ignore)
 
 def is_running():
-    return _NetManager._status() and _ConvertManager._status()
+    return {"_UnixManager" : _UnixManager._status(), "_NetManager" : _NetManager._status(), "_ConvertManager" : _ConvertManager._status()}
 
-def is_connected():
+def is_connected_over_net():
     return _NetManager._connect_status()
 
-def turn_on(modules : list = DefaultModules, classes : list = DefaultClasses, is_server : bool = DefaultIsServer, ip : str = DefaultIp, port : int = DefaultPort, encoding : str = DefaultEncoding, timeout : int = DefaultTimeout, queue_size : int = DefaultQueueSize):
-    convcode = _ConvertManager._start_converter(modules, classes)
-    netcode = _NetManager._init_connection(is_server, ip, port, encoding, timeout, queue_size)
-    if netcode != ExCode.Success or convcode != ExCode.Success:
-        return ExCode.StartFail
+def is_connected_over_unix():
+    return _UnixManager._connect_status()
+
+def start():
+    start_codes = []
+    if StartValues.EnableConvertManager != True: return ExCode.StartFail
+    if StartValues.EnableConvertManager == True: start_codes.append(_ConvertManager._start_converter(StartValues.ConvertModules, StartValues.ConvertClasses))
+    if StartValues.EnableNetManager == True: start_codes.append(_NetManager._init_connection(StartValues.NetIsServer, StartValues.NetIp, StartValues.NetPort,
+                                           StartValues.NetEncoding, StartValues.DefaultNetTimeout, StartValues.NetQueueSize))
+    if StartValues.EnableUnixManager == True: start_codes.append(_UnixManager._init_connection(StartValues.UnixIsServer, StartValues.UnixPath,
+                                           StartValues.UnixEncoding, StartValues.DefaultUnixTimeout, StartValues.UnixQueueSize))
+    for exc in start_codes:
+        if exc != ExCode.Success: return ExCode.StartFail
     return ExCode.Success
 
-def turn_off():
-    convcode = _ConvertManager._stop(prepare_mod=True)
-    netcode = _NetManager._stop(prepare_mod=True)
-    if netcode != ExCode.Success or convcode != ExCode.Success: return ExCode.StopFail
+def stop():
+    stop_codes = []
+    if StartValues.EnableConvertManager == True: stop_codes.append(_ConvertManager._stop(prepare_mod=True))
+    if StartValues.EnableNetManager == True: stop_codes.append(_NetManager._stop(prepare_mod=True))
+    if StartValues.EnableUnixManager == True: stop_codes.append(_UnixManager._stop(prepare_mod=True))
+    for exc in stop_codes:
+        if exc != ExCode.Success: return ExCode.StopFail
     _ConvertManager._stop(prepare_mod=False)
     _NetManager._stop(prepare_mod=False)
+    _UnixManager._stop(prepare_mod=False)
     return ExCode.Success
 
-def accept_net_connection(client_timeout : int = DefaultTimeout):
+def accept_net_connection(client_timeout : int = StartValues.DefaultNetTimeout):
     return _NetManager._accept_connection(client_timeout)
 
-def close_client_connection(client : _NetClient = DefaultNetClient):
+def accept_unix_connection(client_timeout : int = StartValues.DefaultUnixTimeout):
+    return _UnixManager._accept_connection(client_timeout)
+
+def close_net_client_connection(client : _NetClient = StartValues.DefaultNetClient):
     return _NetManager._close_client_connection(client)
 
-def connect_to_srv():
+def close_unix_client_connection(client : _UnixClient = StartValues.DefaultUnixClient):
+    return _UnixManager._close_client_connection(client)
+
+def connect_to_net_srv():
     return _NetManager._connect_to_srv()
 
-def disconnect_from_srv():
+def connect_to_unix_srv():
+    return _UnixManager._connect_to_srv()
+
+def disconnect_from_net_srv():
     return _NetManager._disconnect_from_srv()
 
-def receive_data(bytes : int = DefaultBytes, client : _NetClient = DefaultNetClient):
+def disconnect_from_unix_srv():
+    return _UnixManager._disconnect_from_srv()
+
+def receive_data_over_net(bytes : int = StartValues.DefaultNetBytes, client : _NetClient = StartValues.DefaultNetClient):
     data, excode = _NetManager._receive_data(client, bytes)
     if excode != ExCode.Success: return data, excode
-    netmes, loadcode = load_net_message_from_str(messtr=data)
+    netmes, loadcode = load_message_from_str(messtr=data)
     return netmes, loadcode
 
-def send_data(netmessage : _NetMessage, client : _NetClient = DefaultNetClient):
+def send_data_over_net(netmessage : _NetMessage, client : _NetClient = StartValues.DefaultNetClient):
     if type(netmessage) != _NetMessage : return ExCode.BadData
     if netmessage.create_code != ExCode.Success: return ExCode.BadData
     sendcode = _NetManager._send_data(client, netmessage.json_string)
+    return sendcode
+
+def receive_data_over_unix(bytes : int = StartValues.DefaultUnixBytes, client : _UnixClient = StartValues.DefaultUnixClient):
+    data, excode = _UnixManager._receive_data(client, bytes)
+    if excode != ExCode.Success: return data, excode
+    netmes, loadcode = load_message_from_str(messtr=data)
+    return netmes, loadcode
+
+def send_data_over_unix(netmessage : _NetMessage, client : _UnixClient = StartValues.DefaultUnixClient):
+    if type(netmessage) != _NetMessage : return ExCode.BadData
+    if netmessage.create_code != ExCode.Success: return ExCode.BadData
+    sendcode = _UnixManager._send_data(client, netmessage.json_string)
     return sendcode
