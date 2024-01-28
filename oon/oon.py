@@ -120,7 +120,7 @@ class _ConvertManager(object):
 class _NetClient:
     __slots__ = ['alive', 'socket', 'addr', 'port', 'uuid']
     _count = 0
-    def __init__(self, socket, conn : tuple, uuid : str = ud.uuid4().hex[:10]):
+    def __init__(self, socket, conn : tuple, uuid : str = ud.uuid4().hex[:20]):
         self.socket = socket
         self.addr = conn[0]
         self.port = conn[1]
@@ -141,7 +141,7 @@ class _NetClient:
 class _UnixClient:
     __slots__ = ['alive', 'socket', 'uuid']
     _count = 0
-    def __init__(self, socket, uuid : str = ud.uuid4().hex[:10]):
+    def __init__(self, socket, uuid : str = ud.uuid4().hex[:20]):
         self.socket = socket
         self.uuid = uuid
         self.alive = True
@@ -477,7 +477,7 @@ class _NetManager(object):
 
 class _NetMessage:
     __slots__ = ['create_code', 'json_string', 'netobj', 'uuid']
-    def __init__(self, classes : list, body, fields_to_ignore : list, uuid : str = ud.uuid4().hex[:10]):
+    def __init__(self, classes : list, body, fields_to_ignore : list, uuid : str = ud.uuid4().hex[:20]):
         final_netobj = None
         final_json_string = json.dumps({"head":{"uuid":uuid}, "body":{}})
         final_uuid = uuid
@@ -587,7 +587,7 @@ class _NetMessage:
 
 
 
-def generate_message(netobj = StartValues.DefaultNetobj, fields_to_ignore : list = StartValues.DefaultIgnoreFields, uuid : str = ud.uuid4().hex[:10]):
+def generate_message(netobj = StartValues.DefaultNetobj, fields_to_ignore : list = StartValues.DefaultIgnoreFields, uuid : str = ud.uuid4().hex[:20]):
     return _ConvertManager._generate_net_message(netobj, fields_to_ignore, uuid)
 
 def load_message_from_str(messtr : str = StartValues.DefaultMessageString, fields_to_ignore : list = StartValues.DefaultIgnoreFields):
@@ -677,3 +677,9 @@ def send_data_over_unix(netmessage : _NetMessage, client : _UnixClient = StartVa
     if netmessage.create_code != ExCode.Success: return ExCode.BadData
     sendcode = _UnixManager._send_data(client, netmessage.json_string)
     return sendcode
+
+def just_convert_object_to_dict(classes, netobj, fields_to_ignore : list):
+    return _NetMessage._netobj_to_dict(classes, netobj, fields_to_ignore)
+
+def just_load_object_from_dict(classes, objdict, fields_to_ignore : list):
+    return _NetMessage._netobj_from_dict(classes, objdict, fields_to_ignore)

@@ -17,5 +17,7 @@ from .oon import receive_data_over_net
 from .oon import receive_data_over_unix
 from .oon import send_data_over_net
 from .oon import send_data_over_unix
+from .oon import just_convert_object_to_dict
+from .oon import just_load_object_from_dict
 from .oon import ExCode
 from .oon import StartValues
