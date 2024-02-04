@@ -434,7 +434,7 @@ class _NetManager(object):
         elif _NetManager.server_mode == False and client != None: return ExCode.BadConn
         if _NetManager.server_mode == True and type(client) != _NetClient: return ExCode.BadConn
         if _NetManager.server_mode == True and client.alive != True: return ExCode.BadConn
-        if _NetManager.server_mode == False and _NetManager.connected == False: return None, ExCode.BadConn
+        if _NetManager.server_mode == False and _NetManager.connected == False: return ExCode.BadConn
         try:
             if client != None: client.socket.send(data.encode(encoding=_NetManager.encoding))
             else: _NetManager.net_socket.send(data.encode(encoding=_NetManager.encoding))
