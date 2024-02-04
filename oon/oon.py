@@ -390,6 +390,8 @@ class _NetManager(object):
         if not _NetManager.init or _NetManager.server_mode == True: return ExCode.StartFail
         if _NetManager.connected == True: return ExCode.BadConn
         try:
+            _NetManager.net_socket = socket.socket()
+            _NetManager.net_socket.settimeout(_NetManager.timeout)
             _NetManager.net_socket.connect((_NetManager.ip, _NetManager.port))
             _NetManager.connected = True
             return ExCode.Success
@@ -402,11 +404,13 @@ class _NetManager(object):
     def _disconnect_from_srv():
         if not _NetManager.init or _NetManager.server_mode == True: return ExCode.StartFail
         if _NetManager.connected == False: return ExCode.BadConn
-        try: _NetManager.net_socket.close()
+        try:
+            _NetManager.net_socket.close()
+            _NetManager.net_socket = None
         except: return ExCode.BadConn
         _NetManager.connected = False
         return ExCode.Success
-    
+
 #### shared methods
 
     @staticmethod
