@@ -271,7 +271,7 @@ class _UnixManager(object):
         elif _UnixManager.server_mode == False and client != None: return ExCode.BadConn
         if _UnixManager.server_mode == True and type(client) != _UnixClient: return ExCode.BadConn
         if _UnixManager.server_mode == True and client.alive != True: return ExCode.BadConn
-        if _UnixManager.server_mode == False and _UnixManager.connected == False: return None, ExCode.BadConn
+        if _UnixManager.server_mode == False and _UnixManager.connected == False: return ExCode.BadConn
         try:
             if client != None: client.socket.send(data.encode(encoding=_UnixManager.encoding))
             else: _UnixManager.unix_socket.send(data.encode(encoding=_UnixManager.encoding))
